@@ -73,6 +73,9 @@ func Guard(store store.Storage, priv kyber.Scalar, identity, signature, data str
 	} else if assignee != nil && bytes.Compare(assignee, crypto.PublicKeyBytes(pub)) != 0 {
 		return nil, fmt.Errorf("invalid assignee %s", assignee)
 	}
+	if assignee != nil {
+		fmt.Printf("assignor %s\n", hex.EncodeToString(assignee))
+	}
 
 	assignor, err := store.ReadAssignor(crypto.PublicKeyBytes(pub))
 	if err != nil {
@@ -80,6 +83,7 @@ func Guard(store store.Storage, priv kyber.Scalar, identity, signature, data str
 	} else if assignor == nil {
 		assignor = crypto.PublicKeyBytes(pub)
 	}
+	fmt.Printf("assignor %s\n", hex.EncodeToString(assignor))
 
 	lkey := append(assignor, "EPHEMERAL"...)
 	available, err := store.CheckLimit(lkey, EphemeralLimitWindow, EphemeralLimitQuota, false)

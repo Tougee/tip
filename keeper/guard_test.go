@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -14,11 +15,10 @@ import (
 	"github.com/MixinNetwork/tip/store"
 	"github.com/drand/kyber"
 	"github.com/drand/kyber/pairing/bn256"
-	"github.com/drand/kyber/util/random"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGuard(t *testing.T) {
+func TestGuard1(t *testing.T) {
 	assert := assert.New(t)
 
 	dir, _ := os.MkdirTemp("/tmp", "tip-keeper-test")
@@ -27,141 +27,64 @@ func TestGuard(t *testing.T) {
 	defer bs.Close()
 
 	suite := bn256.NewSuiteBn256()
-	signer := suite.Scalar().Pick(random.New())
+	s, _ := hex.DecodeString("0da58ccc3b323d92af281367333f4c120418ed2700de803046947f59707b3479")
+	signer := suite.Scalar().SetBytes(s)
 	node := crypto.PublicKey(signer)
-	user := suite.Scalar().Pick(random.New())
+
+	uSk, _ := hex.DecodeString("b71501aa0da98385eb7345413bb38930fd214c92e6da4995d2156fc2f914bdc7")
+	user := suite.Scalar().SetBytes(uSk)
 	identity := crypto.PublicKeyString(crypto.PublicKey(user))
+	fmt.Printf("1 u pk %s\n", hex.EncodeToString(crypto.PublicKeyBytes(crypto.PublicKey(user))))
 
-	ephmr := crypto.PrivateKeyBytes(suite.Scalar().Pick(random.New()))
+	e, _ := hex.DecodeString("bb265d9cd6c823015eeff7a71f92f174825711c9157bb575bebe96ca8e6a234d")
+	ephmr := crypto.PrivateKeyBytes(suite.Scalar().SetBytes(e))
 	grace := uint64(time.Hour * 24 * 128)
-	for i := uint64(0); i < 10; i++ {
-		signature, data := makeTestRequest(user, node, ephmr, nil, 1024+i, grace)
-		res, err := Guard(bs, signer, identity, signature, data)
-		assert.Nil(err)
-		assert.Equal(SecretLimitQuota, res.Available)
-		assert.Equal(1024+i, res.Nonce)
-		key := crypto.PublicKeyBytes(crypto.PublicKey(user))
-		lkey := append(key, "EPHEMERAL"...)
-		available, err := bs.CheckLimit(lkey, EphemeralLimitWindow, EphemeralLimitQuota, false)
-		assert.Equal(EphemeralLimitQuota, available)
-		assert.Nil(err)
-	}
 
-	// invalid nonce
-	signature, data := makeTestRequest(user, node, ephmr, nil, 1024, grace)
+	signature, data := makeTestRequest(t, user, node, ephmr, nil, 1024, grace, "")
 	res, err := Guard(bs, signer, identity, signature, data)
-	assert.Nil(res)
 	assert.Nil(err)
-	key := crypto.PublicKeyBytes(crypto.PublicKey(user))
-	lkey := append(key, "EPHEMERAL"...)
-	available, err := bs.CheckLimit(lkey, EphemeralLimitWindow, EphemeralLimitQuota, false)
-	assert.Equal(EphemeralLimitQuota-1, available)
-	assert.Nil(err)
+	fmt.Printf("res assignor %s\n\n", hex.EncodeToString(res.Assignor))
 
-	// invalid encryption
-	signature, data = makeTestRequest(user, crypto.PublicKey(user), ephmr, nil, 1034, grace)
+	// ab := make([]byte, 32)
+	// _, err = io.ReadFull(rand.Reader, ab)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// assignee := hex.EncodeToString(ab)
+	assignee := "cbf9b2651c568330984835d23b034c3baf136523651a340c9430551b4f7c8773"
+	fmt.Printf("assignee %s\n", assignee)
+	ab, _ := hex.DecodeString(assignee)
+
+	signature, data = makeTestRequest(t, user, node, ephmr, nil, 1025, grace, assignee)
 	res, err = Guard(bs, signer, identity, signature, data)
-	assert.Nil(res)
-	assert.Contains(err.Error(), "invalid data ")
-	key = crypto.PublicKeyBytes(crypto.PublicKey(user))
-	lkey = append(key, "EPHEMERAL"...)
-	available, err = bs.CheckLimit(lkey, EphemeralLimitWindow, EphemeralLimitQuota, false)
-	assert.Equal(EphemeralLimitQuota-1, available)
 	assert.Nil(err)
+	fmt.Printf("res assignor %s\n\n", hex.EncodeToString(res.Assignor))
 
-	// invalid ephemeral
-	signature, data = makeTestRequest(user, node, crypto.PublicKeyBytes(node), nil, 1034, grace)
+	// update user use last assginee
+	user = suite.Scalar().SetBytes(ab[:])
+	identity = crypto.PublicKeyString(crypto.PublicKey(user))
+	fmt.Printf("3 u pk %s\n", hex.EncodeToString(crypto.PublicKeyBytes(crypto.PublicKey(user))))
+
+	// ab = make([]byte, 32)
+	// _, err = io.ReadFull(rand.Reader, ab)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// assignee = hex.EncodeToString(ab)
+	assignee = "b71501aa0da98385eb7345413bb38930fd214c92e6da4995d2156fc2f914bdc7"
+	fmt.Printf("assignee %s\n", assignee)
+
+	signature, data = makeTestRequest(t, user, node, ephmr, nil, 1026, grace, assignee)
 	res, err = Guard(bs, signer, identity, signature, data)
-	assert.Nil(res)
 	assert.Nil(err)
-	key = crypto.PublicKeyBytes(crypto.PublicKey(user))
-	lkey = append(key, "EPHEMERAL"...)
-	available, err = bs.CheckLimit(lkey, EphemeralLimitWindow, EphemeralLimitQuota, false)
-	assert.Equal(EphemeralLimitQuota-2, available)
-	assert.Nil(err)
-
-	// invalid signature
-	for i := 1; i < 6; i++ {
-		signature, data = makeTestRequest(user, node, ephmr, nil, uint64(1033+i), grace)
-		res, err := Guard(bs, signer, identity, hex.EncodeToString(ephmr), data)
-		assert.Nil(res)
-		assert.Nil(err)
-		key = crypto.PublicKeyBytes(crypto.PublicKey(user))
-		lkey = append(key, "EPHEMERAL"...)
-		available, err := bs.CheckLimit(lkey, EphemeralLimitWindow, EphemeralLimitQuota, false)
-		assert.Equal(EphemeralLimitQuota-2, available)
-		assert.Nil(err)
-		lkey = append(key, "SECRET"...)
-		available, err = bs.CheckLimit(lkey, SecretLimitWindow, SecretLimitQuota, false)
-		assert.Equal(SecretLimitQuota-i, available)
-		assert.Nil(err)
-	}
-
-	signature, data = makeTestRequest(user, node, ephmr, nil, 1039, grace)
-	res, err = Guard(bs, signer, identity, signature, data)
-	assert.Equal(SecretLimitQuota-5, res.Available)
-	assert.Equal(uint64(1039), res.Nonce)
-	assert.Nil(err)
-	key = crypto.PublicKeyBytes(crypto.PublicKey(user))
-	lkey = append(key, "EPHEMERAL"...)
-	available, err = bs.CheckLimit(lkey, EphemeralLimitWindow, EphemeralLimitQuota, false)
-	assert.Equal(EphemeralLimitQuota-2, available)
-	assert.Nil(err)
-	lkey = append(key, "SECRET"...)
-	available, err = bs.CheckLimit(lkey, SecretLimitWindow, SecretLimitQuota, false)
-	assert.Equal(SecretLimitQuota-5, available)
-	assert.Nil(err)
+	fmt.Printf("res assignor %s\n", hex.EncodeToString(res.Assignor))
 }
 
-func TestAssigneeAndRotation(t *testing.T) {
-	assert := assert.New(t)
-
-	dir, _ := os.MkdirTemp("/tmp", "tip-keeper-test")
-	conf := &store.BadgerConfiguration{Dir: dir}
-	bs, _ := store.OpenBadger(context.Background(), conf)
-	defer bs.Close()
-
-	suite := bn256.NewSuiteBn256()
-	signer := suite.Scalar().Pick(random.New())
-	node := crypto.PublicKey(signer)
-
-	u1 := suite.Scalar().Pick(random.New())
-	i1 := crypto.PublicKeyString(crypto.PublicKey(u1))
-	u2 := suite.Scalar().Pick(random.New())
-	i2 := crypto.PublicKeyString(crypto.PublicKey(u2))
-	u3 := suite.Scalar().Pick(random.New())
-	i3 := crypto.PublicKeyString(crypto.PublicKey(u3))
-
-	ephmr := crypto.PrivateKeyBytes(suite.Scalar().Pick(random.New()))
-	grace := uint64(time.Hour * 24 * 128)
-	signature, data := makeTestRequest(u1, node, ephmr, nil, 1024, grace)
-	res, err := Guard(bs, signer, i1, signature, data)
-	assert.Nil(err)
-	assert.Equal(SecretLimitQuota, res.Available)
-	assert.Equal(1024, int(res.Nonce))
-
-	ephmr = crypto.PrivateKeyBytes(suite.Scalar().Pick(random.New()))
-	grace = uint64(time.Hour * 24 * 128)
-	signature, data = makeTestRequest(u2, node, ephmr, nil, 1024, grace)
-	res, err = Guard(bs, signer, i2, signature, data)
-	assert.Nil(err)
-	assert.Equal(SecretLimitQuota, res.Available)
-	assert.Equal(1024, int(res.Nonce))
-
-	ephmr = crypto.PrivateKeyBytes(suite.Scalar().Pick(random.New()))
-	grace = uint64(time.Hour * 24 * 128)
-	signature, data = makeTestRequest(u3, node, ephmr, nil, 1024, grace)
-	res, err = Guard(bs, signer, i3, signature, data)
-	assert.Nil(err)
-	assert.Equal(SecretLimitQuota, res.Available)
-	assert.Equal(1024, int(res.Nonce))
+func makeTestRequest(t *testing.T, user kyber.Scalar, signer kyber.Point, ephmr, rtt []byte, nonce, grace uint64, assignee string) (string, string) {
+	return makeTestRequestWithAssigneeAndRotation(t, user, signer, ephmr, rtt, nonce, grace, assignee, "")
 }
 
-func makeTestRequest(user kyber.Scalar, signer kyber.Point, ephmr, rtt []byte, nonce, grace uint64) (string, string) {
-	return makeTestRequestWithAssigneeAndRotation(user, signer, ephmr, rtt, nonce, grace, "", "")
-}
-
-func makeTestRequestWithAssigneeAndRotation(user kyber.Scalar, signer kyber.Point, ephmr, rtt []byte, nonce, grace uint64, assignee, rotation string) (string, string) {
+func makeTestRequestWithAssigneeAndRotation(t *testing.T, user kyber.Scalar, signer kyber.Point, ephmr, rtt []byte, nonce, grace uint64, assignee string, rotation string) (string, string) {
 	pkey := crypto.PublicKey(user)
 	msg := crypto.PublicKeyBytes(pkey)
 	msg = append(msg, ephmr...)
@@ -170,16 +93,29 @@ func makeTestRequestWithAssigneeAndRotation(user kyber.Scalar, signer kyber.Poin
 	msg = append(msg, buf...)
 	binary.BigEndian.PutUint64(buf, grace)
 	msg = append(msg, buf...)
+
 	data := map[string]interface{}{
 		"identity":  crypto.PublicKeyString(pkey),
 		"ephemeral": hex.EncodeToString(ephmr),
 		"nonce":     nonce,
 		"grace":     grace,
 	}
+
+	if len(assignee) > 0 {
+		as, _ := crypto.PrivateKeyFromHex(assignee)
+		ap := crypto.PublicKey(as)
+		ab := crypto.PublicKeyBytes(ap)
+		sig, _ := crypto.Sign(as, ab)
+		ab = append(ab, sig...)
+		msg = append(msg, ab...)
+		data["assignee"] = hex.EncodeToString(ab)
+	}
+
 	if rtt != nil {
 		msg = append(msg, rtt[:]...)
 		data["rotate"] = hex.EncodeToString(rtt)
 	}
+
 	b, _ := json.Marshal(data)
 	cipher := crypto.Encrypt(signer, user, b)
 	sig, _ := crypto.Sign(user, msg)

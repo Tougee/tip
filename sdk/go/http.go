@@ -49,6 +49,7 @@ func request(sp *signerPair, method string, data []byte) (*ResponseData, error) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("error code %d\n", resp.StatusCode)
 		return nil, fmt.Errorf("error code %d", resp.StatusCode)
 	}
 

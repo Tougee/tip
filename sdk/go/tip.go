@@ -123,6 +123,8 @@ func (c *Client) Sign(ks, ephemeral string, nonce, grace int64, rotate, assignee
 			continue
 		}
 		p, a := dec[8:74], dec[74:202]
+		counter := binary.BigEndian.Uint64(dec[210:218])
+		fmt.Printf("counter %d\n", counter)
 		as := hex.EncodeToString(a)
 		pam[hex.EncodeToString(p)] = a
 		acm[as] = acm[as] + 1
@@ -139,6 +141,7 @@ func (c *Client) Sign(ks, ephemeral string, nonce, grace int64, rotate, assignee
 		if bytes.Compare(a, assignor) != 0 {
 			continue
 		}
+		fmt.Printf("partial %s\n", p)
 		partial, _ := hex.DecodeString(p)
 		partials = append(partials, partial)
 	}
@@ -149,6 +152,7 @@ func (c *Client) Sign(ks, ephemeral string, nonce, grace int64, rotate, assignee
 	suite := bn256.NewSuiteG2()
 	scheme := tbls.NewThresholdSchemeOnG1(bn256.NewSuiteG2())
 	poly := share.NewPubPoly(suite, suite.Point().Base(), c.commitments)
+	fmt.Printf("assignor %s\n", hex.EncodeToString(assignor))
 	sig, err := scheme.Recover(poly, assignor, partials, len(c.commitments), len(c.signers))
 	if err != nil {
 		return nil, evicted, err
