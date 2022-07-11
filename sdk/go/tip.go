@@ -72,6 +72,21 @@ func NewClient(conf *Configuration) (*Client, []*signerPair, error) {
 	return cli, evicted, nil
 }
 
+func (c *Client) Watch(watcher string) {
+	for i, s := range c.signers {
+		req, _ := json.Marshal(map[string]interface{}{
+			"action":  "WATCH",
+			"watcher": watcher,
+		})
+		res, err := requestWatch(s, "POST", req)
+		if err != nil {
+			fmt.Printf("watch %d response is nil\n", i)
+			continue
+		}
+		fmt.Printf("watch %d counter %d, genesis %s\n", i, res.Counter, res.Genesis)
+	}
+}
+
 func (c *Client) Sign(ks, ephemeral string, nonce, grace int64, rotate, assignee, watcher string) ([]byte, []*signerPair, error) {
 	key, err := crypto.PrivateKeyFromHex(ks)
 	if err != nil {
@@ -93,7 +108,7 @@ func (c *Client) Sign(ks, ephemeral string, nonce, grace int64, rotate, assignee
 	var evicted []*signerPair
 	pam := make(map[string][]byte)
 	acm := make(map[string]int)
-	for _, s := range c.signers {
+	for i, s := range c.signers {
 		data := sign(key, s.Identity, ephemeral, uint64(nonce), uint64(grace), rotate, assignee, watcher)
 		res, err := request(s, "POST", data)
 		if err != nil {
@@ -124,7 +139,7 @@ func (c *Client) Sign(ks, ephemeral string, nonce, grace int64, rotate, assignee
 		}
 		p, a := dec[8:74], dec[74:202]
 		counter := binary.BigEndian.Uint64(dec[210:218])
-		fmt.Printf("counter %d\n", counter)
+		fmt.Printf("sign %d counter %d\n", i, counter)
 		as := hex.EncodeToString(a)
 		pam[hex.EncodeToString(p)] = a
 		acm[as] = acm[as] + 1

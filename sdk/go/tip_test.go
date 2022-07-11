@@ -38,8 +38,15 @@ func TestSign(t *testing.T) {
 		panic(err)
 	}
 
+	wb := make([]byte, 32)
+	_, err = io.ReadFull(rand.Reader, wb)
+	if err != nil {
+		panic(err)
+	}
+
 	key := hex.EncodeToString(kb)
 	ephemeral := hex.EncodeToString(eb)
+	watcher := hex.EncodeToString(wb)
 	t.Logf("key %s", key)
 	t.Logf("epehemral %s", ephemeral)
 
@@ -51,18 +58,20 @@ func TestSign(t *testing.T) {
 
 	nonce := int64(1024)
 
-	sig, _, err := client.Sign(key, ephemeral, nonce, grace, "", "")
+	sig, _, err := client.Sign(key, ephemeral, nonce, grace, "", "", watcher)
 	t.Logf("sig %s", hex.EncodeToString(sig))
 	assert.Nil(t, err)
+	client.Watch(watcher)
 
 	assignee := hex.EncodeToString(ab)
 	t.Logf("assignee %s", assignee)
 
 	nonce = int64(1025)
 
-	sig, _, err = client.Sign(key, ephemeral, nonce, grace, "", assignee)
+	sig, _, err = client.Sign(key, ephemeral, nonce, grace, "", assignee, watcher)
 	t.Logf("sig %s", hex.EncodeToString(sig))
 	assert.Nil(t, err)
+	client.Watch(watcher)
 
 	// update user
 	key = assignee
@@ -77,16 +86,18 @@ func TestSign(t *testing.T) {
 
 	nonce = int64(1026)
 
-	sig, _, err = client.Sign(key, ephemeral, nonce, grace, "", assignee)
+	sig, _, err = client.Sign(key, ephemeral, nonce, grace, "", assignee, watcher)
 	t.Logf("sig %s", hex.EncodeToString(sig))
 	assert.Nil(t, err)
+	client.Watch(watcher)
 
 	// update user
 	key = assignee
 
 	nonce = int64(1027)
 
-	sig, _, err = client.Sign(key, ephemeral, nonce, grace, "", "")
+	sig, _, err = client.Sign(key, ephemeral, nonce, grace, "", "", watcher)
 	t.Logf("sig %s", hex.EncodeToString(sig))
 	assert.Nil(t, err)
+	client.Watch(watcher)
 }

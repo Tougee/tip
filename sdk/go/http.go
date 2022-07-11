@@ -27,6 +27,15 @@ type ResponseData struct {
 	Cipher string `json:"cipher,omitempty"`
 }
 
+type WatchResponse struct {
+	Error *struct {
+		Code        int    `json:"code"`
+		Description string `json:"description"`
+	} `json:"error"`
+	Counter int       `json:"counter"`
+	Genesis time.Time `json:"genesisi"`
+}
+
 type Response struct {
 	Error *struct {
 		Code        int    `json:"code"`
@@ -34,6 +43,35 @@ type Response struct {
 	} `json:"error"`
 	Data      *ResponseData `json:"data"`
 	Signature string        `json:"signature"`
+}
+
+func requestWatch(sp *signerPair, method string, data []byte) (*WatchResponse, error) {
+	req, err := http.NewRequest(method, sp.API, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Close = true
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("error code %d\n", resp.StatusCode)
+		return nil, fmt.Errorf("error code %d", resp.StatusCode)
+	}
+
+	var body WatchResponse
+	err = json.NewDecoder(resp.Body).Decode(&body)
+	if err != nil {
+		return nil, err
+	}
+	if body.Error != nil {
+		return nil, fmt.Errorf("error code %d", body.Error.Code)
+	}
+
+	return &body, nil
 }
 
 func request(sp *signerPair, method string, data []byte) (*ResponseData, error) {
